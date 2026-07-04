@@ -37,38 +37,41 @@ type PredictResponse = {
   std: number | null;
   assetId: number | null;
 };
-
 async function fetchAssets(): Promise<Asset[]> {
-  const r = await fetch("/api/assets");
-  if (!r.ok) throw new Error("Failed to load assets");
-  return r.json();
+  try {
+    const r = await fetch("/api/assets");
+    if (!r.ok) return [];
+    return r.json();
+  } catch {
+    return [];
+  }
 }
 
 async function runPrediction(payload: { input_csv: string; assetId?: number }): Promise<PredictResponse> {
-  const res = await fetch("/api/predict", {
+  const res = await fetch("https://texas-rgb-predictive-maintenance-platform.hf.space/api/predict", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ data: [payload.input_csv] }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error((err as { error: string }).error ?? "Prediction failed");
-  }
-  const raw = await res.json() as { result: string; rulValue: number | null; assetId: number | null };
+  if (!res.ok) throw new Error("Prediction failed");
+  const raw = await res.json() as { data: string[] };
+  const resultStr = raw.data[0];
 
-  // Parse the JSON payload returned by app.py
   let confidence: number | null = null;
   let std: number | null = null;
+  let rulValue: number | null = null;
+
   try {
-    const parsed = JSON.parse(raw.result) as { rul?: number; confidence?: number; std?: number; error?: string };
+    const parsed = JSON.parse(resultStr) as { rul?: number; confidence?: number; std?: number; error?: string };
     if (parsed.error) throw new Error(parsed.error);
+    rulValue = parsed.rul ?? null;
     confidence = parsed.confidence ?? null;
     std = parsed.std ?? null;
   } catch {
-    // Fallback: result is plain text (old app.py format) — confidence stays null
+    // plain text fallback
   }
 
-  return { ...raw, confidence, std };
+  return { result: resultStr, rulValue, confidence, std, assetId: payload.assetId ?? null };
 }
 
 function RulGauge({ rul, confidence, std }: { rul: number; confidence: number | null; std: number | null }) {
@@ -127,8 +130,7 @@ export default function Predictor() {
   const [selectedAssetId, setSelectedAssetId] = useState<string>("none");
   const { toast } = useToast();
 
-  const { data: assets = [] } = useQuery({ queryKey: ["assets"], queryFn: fetchAssets });
-
+ const { data: assets = [] } = useQuery({ queryKey: ["assets"], queryFn: fetchAssets, retry: false });
   const mutation = useMutation({
     mutationFn: runPrediction,
     onSuccess: (data) => {

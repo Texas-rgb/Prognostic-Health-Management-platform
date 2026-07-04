@@ -29,7 +29,7 @@ export default function Dashboard() {
   });
 
   const { data: activity, isLoading: isLoadingActivity } = useGetRecentActivity({ limit: 10 }, {
-    query: { queryKey: getGetRecentActivityQueryKey({ limit: 10 }) }
+    query: { queryKey: getGetRecentActivityQueryKey({ limit: 10 }) }~
   });
 
   if (isLoadingSummary || isLoadingTrends || isLoadingHealth || isLoadingActivity) {
